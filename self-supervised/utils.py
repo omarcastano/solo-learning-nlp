@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import numpy as np
 import torch.nn.functional as F
+import string
 
 
 # Basic preprocessing.
@@ -18,43 +19,22 @@ def text_preprocessing(text: str) -> str:
     # remove html tags
     text = re.sub(r"<.*?>", "", text)
 
+    # remove scape sequences (\n , \t, ...)
+    # text = re.sub(r"\\n|\\t|\\r", "", text)
+
+    # remove all punctuation marks except commas and dots
+    keep = {',', '.', "'"}
+    remove = set(string.punctuation) - keep
+    translation_table = str.maketrans('', '', ''.join(remove))
+    text.translate(translation_table)
+
+    # remove urls
+    text = re.sub(r"https?://\S+", "", text)
+
     # remove white spaces at the start and the end
     text = text.strip()
 
     return text
-
-
-# define positional encoding
-class PositionalEncoding(nn.Module):
-    """
-    This class implements positional encoding, which is a technique used in Transformer models to encode the position of each token in a sequence. 
-
-    Arguments:
-    ----------
-        seq_len: int
-            Length of the sequence.
-        embed_dim: int
-            Embedding dimension.
-    """
-
-    def __init__(self, seq_len, embed_dim, device="cpu"):
-        super().__init__()
-
-        self.seq_len = seq_len
-        self.embed_dim = embed_dim
-        self.device = device
-
-    def forward(self):
-
-        P = torch.zeros(self.seq_len, self.embed_dim)
-        pos = torch.arange(self.seq_len).reshape(-1, 1)
-        dim = torch.arange(self.embed_dim).reshape(1, -1)
-
-        P[:, 0::2] = torch.sin(pos / 10000 ** (dim[:, 0::2] / self.embed_dim))
-        P[:, 1::2] = torch.cos(pos / 10000 ** ((dim[:, 1::2] - 1) / self.embed_dim))
-
-        return P.to(self.device)
-
 
 # Define embedding class using positional and token embeddings
 class Embedding(nn.Module):
@@ -81,6 +61,7 @@ class Embedding(nn.Module):
 
     def forward(self, x):
         
+
         token_embeddings = self.token_embeddings(x)
 
         x_pos = torch.arange(x.shape[1]).unsqueeze(0).expand(x.shape[0], -1).to(self.device)
@@ -304,5 +285,46 @@ class EncoderTransformer(nn.Module):
 
         for layer in self.encoder:
             x = layer(x, mask)  # x shape: (batch_size, seq_length, embed_dim)
+
+        return x
+
+# Define modified decoder layer
+class ModifiedDecoderLayer(nn.Module):
+    def __init__(self, embed_dim, num_heads, pf_dim, dropout):
+        super().__init__()
+
+        self.mask_attention = MultiHeadAttention(embed_dim, num_heads, dropout)
+        self.feedforward = PositionWiseFFN(embed_dim, pf_dim, dropout)
+
+        self.add_and_norm_1 = AddAndNormalize(embed_dim)
+        self.add_and_norm_2 = AddAndNormalize(embed_dim)
+
+    def forward(self, x, decoder_mask):
+        # x shape: (batch_size, seq_len, embed_dim)
+        # decoder_mask shape: (batch_size, 1, seq_len, seq_len)
+
+        z, _ = self.mask_attention(x, x, x, mask=decoder_mask)
+        x = self.add_and_norm_1(x, z)
+
+        z = self.feedforward(x)
+        x = self.add_and_norm_2(x, z)
+
+        return x
+    
+
+# Define the DecoderTransformer layer
+class DecoderTransformer(nn.Module):
+    def __init__(self, embed_dim, num_heads, dropout, pf_dim, vocab_size, max_seq_length, n_layers, device="cpu") -> None:
+        super().__init__()
+
+        self.embedding = Embedding(vocab_size, embed_dim, max_seq_length, device)
+        self.decoder = nn.ModuleList([ModifiedDecoderLayer(embed_dim, num_heads, pf_dim, dropout) for _ in range(n_layers)])
+        self.to(device)
+
+    def forward(self, x, decoder_mask):
+        x = self.embedding(x)
+
+        for layer in self.decoder:
+            x = layer(x, decoder_mask)
 
         return x
