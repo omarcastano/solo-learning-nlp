@@ -182,12 +182,12 @@ class PositionWiseFFN(nn.Module):
         self.w1 = nn.Linear(embed_dim, pf_dim)
         self.w2 = nn.Linear(pf_dim, embed_dim)
         self.dropout = nn.Dropout(dropout)
-        self.relu = nn.ReLU()
+        self.gelu = nn.GELU()
 
     def forward(self, x):
 
         x = self.w1(x)
-        x = self.relu(x)
+        x = self.gelu(x)
         x = self.dropout(x)
         x = self.w2(x)
 
