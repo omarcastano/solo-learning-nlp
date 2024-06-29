@@ -13,5 +13,5 @@ This repo contains different NLP implementation of well know models such as GPT 
     - [NMT with Transformers]()
 - Self-Supervised:
     - [BERT]()
-    - [GPT-1]()
+    - [GPT-1](https://github.com/omarcastano/solo-learning-nlp/blob/main/self-supervised/mini_gpt.ipynb)
     - [GPT-2]()
