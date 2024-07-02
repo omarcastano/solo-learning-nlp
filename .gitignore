@@ -1,3 +1,5 @@
 *.txt
 *.zip
 *.pyc
+*.pth
+*.Tokenizer
